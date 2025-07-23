@@ -9,14 +9,37 @@ export declare class UploadController {
         contentType: string;
         fileField: string;
     };
-    uploadPDF(file: Express.Multer.File, queryParams: any): Promise<{
+    uploadPDF(file: Express.Multer.File, queryParams: {
+        buyer?: string;
+        seller?: string;
+        houseNo?: string;
+        surveyNo?: string;
+        documentNo?: string;
+    }): Promise<{
         status: string;
         message: string;
-        data: {
-            size: number;
-            queryParams: any;
-            processed: boolean;
-            timestamp: string;
+        data: any[];
+        debug: {
+            parsedCount: number;
+            translatedCount: number;
+            filteredCount: number;
+            queryParams?: undefined;
+        };
+    } | {
+        status: string;
+        message: string;
+        data: import("./upload.service").Transaction[];
+        debug: {
+            parsedCount: number;
+            translatedCount: number;
+            filteredCount: number;
+            queryParams: {
+                buyer?: string;
+                seller?: string;
+                houseNo?: string;
+                surveyNo?: string;
+                documentNo?: string;
+            };
         };
     }>;
 }

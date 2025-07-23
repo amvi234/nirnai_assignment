@@ -24,34 +24,101 @@ let UploadController = class UploadController {
         return {
             message: 'Upload endpoint is working',
             method: 'POST',
-            endpoint: '/api/upload',
+            endpoint: '/upload',
             contentType: 'multipart/form-data',
             fileField: 'file'
         };
     }
     async uploadPDF(file, queryParams) {
+        console.log('=== UPLOAD ENDPOINT CALLED ===');
+        console.log('Query params:', queryParams);
         if (!file) {
+            console.log('ERROR: No file uploaded');
             throw new common_1.BadRequestException('No file uploaded');
         }
         if (file.mimetype !== 'application/pdf') {
+            console.log('ERROR: Invalid file type:', file.mimetype);
             throw new common_1.BadRequestException('Only PDF files are allowed');
         }
         try {
             console.log('File received:', {
                 originalname: file.originalname,
                 size: file.size,
-                mimetype: file.mimetype
+                mimetype: file.mimetype,
+                bufferLength: file.buffer.length
             });
-            const result = await this.uploadService.processPDF(file.buffer, queryParams);
+            console.log('=== STEP 1: EXTRACTING TRANSACTIONS ===');
+            const parsedTransactions = await this.uploadService.extractTransactions(file.buffer);
+            console.log(`Parsed transactions count: ${parsedTransactions.length}`);
+            if (parsedTransactions.length === 0) {
+                console.log('WARNING: No transactions found in PDF');
+                return {
+                    status: 'success',
+                    message: 'PDF processed but no transactions found',
+                    data: [],
+                    debug: {
+                        parsedCount: 0,
+                        translatedCount: 0,
+                        filteredCount: 0
+                    }
+                };
+            }
+            console.log('=== STEP 2: TRANSLATING TRANSACTIONS ===');
+            const translatedTransactions = await this.uploadService.translateTransactions(parsedTransactions);
+            console.log(`Translated transactions count: ${translatedTransactions.length}`);
+            console.log('=== STEP 3: FILTERING TRANSACTIONS ===');
+            let filteredTransactions = translatedTransactions;
+            if (Object.keys(queryParams).some(key => queryParams[key])) {
+                console.log('Applying filters:', queryParams);
+                filteredTransactions = translatedTransactions.filter(txn => {
+                    const buyerMatch = !queryParams.buyer ||
+                        txn.buyer?.toLowerCase().includes(queryParams.buyer.toLowerCase());
+                    const sellerMatch = !queryParams.seller ||
+                        txn.seller?.toLowerCase().includes(queryParams.seller.toLowerCase());
+                    const houseNoMatch = !queryParams.houseNo ||
+                        txn.houseNo === queryParams.houseNo;
+                    const surveyNoMatch = !queryParams.surveyNo ||
+                        txn.surveyNo === queryParams.surveyNo;
+                    const documentNoMatch = !queryParams.documentNo ||
+                        txn.documentNo === queryParams.documentNo;
+                    const matches = buyerMatch && sellerMatch && houseNoMatch && surveyNoMatch && documentNoMatch;
+                    if (!matches) {
+                        console.log('Transaction filtered out:', {
+                            transaction: txn,
+                            buyerMatch,
+                            sellerMatch,
+                            houseNoMatch,
+                            surveyNoMatch,
+                            documentNoMatch
+                        });
+                    }
+                    return matches;
+                });
+            }
+            console.log(`Filtered transactions count: ${filteredTransactions.length}`);
+            console.log('=== FINAL RESULT ===');
+            console.log('Returning data:', JSON.stringify(filteredTransactions, null, 2));
             return {
                 status: 'success',
-                message: 'File uploaded successfully',
-                data: result
+                message: 'PDF parsed and filtered successfully',
+                data: filteredTransactions,
+                debug: {
+                    parsedCount: parsedTransactions.length,
+                    translatedCount: translatedTransactions.length,
+                    filteredCount: filteredTransactions.length,
+                    queryParams: queryParams
+                }
             };
         }
         catch (error) {
-            console.error('Upload error:', error);
-            throw new common_1.HttpException('Failed to process PDF', common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+            console.error('=== UPLOAD ERROR ===');
+            console.error('Error details:', error);
+            console.error('Stack trace:', error.stack);
+            throw new common_1.HttpException({
+                message: 'Failed to process PDF',
+                error: error.message,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            }, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 };

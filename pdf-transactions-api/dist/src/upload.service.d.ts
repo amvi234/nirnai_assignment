@@ -1,8 +1,17 @@
+export interface Transaction {
+    buyer: string;
+    seller: string;
+    houseNo: string;
+    surveyNo: string;
+    documentNo: string;
+    date: string;
+    value: string;
+}
 export declare class UploadService {
-    processPDF(fileBuffer: Buffer, queryParams: any): Promise<{
-        size: number;
-        queryParams: any;
-        processed: boolean;
-        timestamp: string;
-    }>;
+    private translateClient;
+    extractTransactions(buffer: Buffer): Promise<Transaction[]>;
+    private extractFieldValue;
+    private isTransactionComplete;
+    translateTransactions(transactions: Transaction[]): Promise<Transaction[]>;
+    private translateText;
 }
