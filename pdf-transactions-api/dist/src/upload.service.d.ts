@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 export interface Transaction {
     buyer: string;
     seller: string;
@@ -8,7 +9,10 @@ export interface Transaction {
     value: string;
 }
 export declare class UploadService {
-    private translateClient;
+    private readonly configService;
+    private readonly googleTranslateUrl;
+    private readonly apiKey;
+    constructor(configService: ConfigService);
     extractTransactions(buffer: Buffer): Promise<Transaction[]>;
     private extractFieldValue;
     private isTransactionComplete;

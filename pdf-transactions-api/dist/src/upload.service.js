@@ -38,14 +38,23 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UploadService = void 0;
 const common_1 = require("@nestjs/common");
 const pdfParse = __importStar(require("pdf-parse"));
-const translate_1 = require("@google-cloud/translate");
+const config_1 = require("@nestjs/config");
+const axios_1 = __importDefault(require("axios"));
 let UploadService = class UploadService {
-    constructor() {
-        this.translateClient = new translate_1.v2.Translate();
+    constructor(configService) {
+        this.configService = configService;
+        this.googleTranslateUrl = 'https://translation.googleapis.com/language/translate/v2';
+        this.apiKey = this.configService.get('GOOGLE_TRANSLATE_API_KEY');
     }
     async extractTransactions(buffer) {
         try {
@@ -197,42 +206,21 @@ let UploadService = class UploadService {
             txn.value);
     }
     async translateTransactions(transactions) {
-        if (transactions.length === 0) {
-            console.log('No transactions to translate');
+        if (transactions.length === 0)
             return [];
-        }
-        console.log(`Starting translation of ${transactions.length} transactions`);
         const translated = [];
-        for (let i = 0; i < transactions.length; i++) {
-            const txn = transactions[i];
-            console.log(`Translating transaction ${i + 1}/${transactions.length}`);
-            try {
-                const [buyer, seller, houseNo, surveyNo, documentNo, date, value] = await Promise.all([
-                    this.translateText(txn.buyer),
-                    this.translateText(txn.seller),
-                    this.translateText(txn.houseNo),
-                    this.translateText(txn.surveyNo),
-                    this.translateText(txn.documentNo),
-                    this.translateText(txn.date),
-                    this.translateText(txn.value),
-                ]);
-                translated.push({
-                    buyer,
-                    seller,
-                    houseNo,
-                    surveyNo,
-                    documentNo,
-                    date,
-                    value
-                });
-                console.log(`Transaction ${i + 1} translated successfully`);
-            }
-            catch (err) {
-                console.error(`Translation failed for transaction ${i + 1}:`, err);
-                translated.push(txn);
-            }
+        for (const txn of transactions) {
+            const translatedTxn = {
+                buyer: await this.translateText(txn.buyer),
+                seller: await this.translateText(txn.seller),
+                houseNo: await this.translateText(txn.houseNo),
+                surveyNo: await this.translateText(txn.surveyNo),
+                documentNo: await this.translateText(txn.documentNo),
+                date: await this.translateText(txn.date),
+                value: await this.translateText(txn.value),
+            };
+            translated.push(translatedTxn);
         }
-        console.log(`Translation completed. ${translated.length} transactions processed`);
         return translated;
     }
     async translateText(text) {
@@ -243,11 +231,13 @@ let UploadService = class UploadService {
             if (/^[a-zA-Z0-9\s\-.,/]+$/.test(text)) {
                 return text;
             }
-            const [translation] = await this.translateClient.translate(text, {
-                from: 'ta',
-                to: 'en'
+            const response = await axios_1.default.post(`${this.googleTranslateUrl}?key=${this.apiKey}`, {
+                q: text,
+                source: 'ta',
+                target: 'en',
+                format: 'text',
             });
-            return translation;
+            return response.data.data.translations[0].translatedText;
         }
         catch (error) {
             console.error('Translation error for text:', text, error);
@@ -257,6 +247,7 @@ let UploadService = class UploadService {
 };
 exports.UploadService = UploadService;
 exports.UploadService = UploadService = __decorate([
-    (0, common_1.Injectable)()
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [config_1.ConfigService])
 ], UploadService);
 //# sourceMappingURL=upload.service.js.map

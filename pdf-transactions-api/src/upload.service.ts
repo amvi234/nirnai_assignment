@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import * as pdfParse from 'pdf-parse';
 import { v2 as Translate } from '@google-cloud/translate';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 
 export interface Transaction {
   buyer: string;
@@ -14,7 +16,13 @@ export interface Transaction {
 
 @Injectable()
 export class UploadService {
-  private translateClient = new Translate.Translate();
+  private readonly googleTranslateUrl = 'https://translation.googleapis.com/language/translate/v2';
+  private readonly apiKey: string;
+
+  constructor(private readonly configService: ConfigService) {
+    this.apiKey = this.configService.get<string>('GOOGLE_TRANSLATE_API_KEY');
+  }
+
 
   /**
    * Extract transaction records from Tamil real estate PDF
@@ -217,49 +225,22 @@ export class UploadService {
    * Translate transactions using Google Cloud Translate
    */
   async translateTransactions(transactions: Transaction[]): Promise<Transaction[]> {
-    if (transactions.length === 0) {
-      console.log('No transactions to translate');
-      return [];
-    }
+    if (transactions.length === 0) return [];
 
-    console.log(`Starting translation of ${transactions.length} transactions`);
     const translated: Transaction[] = [];
-
-    for (let i = 0; i < transactions.length; i++) {
-      const txn = transactions[i];
-      console.log(`Translating transaction ${i + 1}/${transactions.length}`);
-      
-      try {
-        const [buyer, seller, houseNo, surveyNo, documentNo, date, value] =
-          await Promise.all([
-            this.translateText(txn.buyer),
-            this.translateText(txn.seller),
-            this.translateText(txn.houseNo),
-            this.translateText(txn.surveyNo),
-            this.translateText(txn.documentNo),
-            this.translateText(txn.date),
-            this.translateText(txn.value),
-          ]);
-
-        translated.push({
-          buyer,
-          seller,
-          houseNo,
-          surveyNo,
-          documentNo,
-          date,
-          value
-        });
-        
-        console.log(`Transaction ${i + 1} translated successfully`);
-      } catch (err) {
-        console.error(`Translation failed for transaction ${i + 1}:`, err);
-        // Push original transaction if translation fails
-        translated.push(txn);
-      }
+    for (const txn of transactions) {
+      const translatedTxn: Transaction = {
+        buyer: await this.translateText(txn.buyer),
+        seller: await this.translateText(txn.seller),
+        houseNo: await this.translateText(txn.houseNo),
+        surveyNo: await this.translateText(txn.surveyNo),
+        documentNo: await this.translateText(txn.documentNo),
+        date: await this.translateText(txn.date),
+        value: await this.translateText(txn.value),
+      };
+      translated.push(translatedTxn);
     }
 
-    console.log(`Translation completed. ${translated.length} transactions processed`);
     return translated;
   }
 
@@ -277,11 +258,17 @@ export class UploadService {
         return text;
       }
 
-      const [translation] = await this.translateClient.translate(text, {
-        from: 'ta',
-        to: 'en'
-      });
-      return translation;
+      const response = await axios.post(
+        `${this.googleTranslateUrl}?key=${this.apiKey}`,
+        {
+          q: text,
+          source: 'ta',
+          target: 'en',
+          format: 'text',
+        },
+      );
+      
+      return response.data.data.translations[0].translatedText;
     } catch (error) {
       console.error('Translation error for text:', text, error);
       return text; // Return original text if translation fails
